@@ -322,33 +322,113 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- 7. Contact Form Simulation ---
+  // --- 7. Contact Form Submission ---
   const contactForm = document.getElementById("contact-form");
   const toast = document.querySelector(".alert-toast");
+  const contactStatus = document.getElementById("contact-status");
 
   if (contactForm) {
-    contactForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      
-      const submitBtn = contactForm.querySelector('button[type="submit"]');
-      const originalText = submitBtn.innerHTML;
-      
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = `<span>Sending...</span>`;
+    const submitBtn = contactForm.querySelector('button[type="submit"]');
+    const requestIdInput = document.getElementById("contact-request-id");
+    const originalButtonText = submitBtn.innerHTML;
+    let activeRequestId = null;
+    let submissionTimeout;
+    let toastTimeout;
 
-      setTimeout(() => {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
-        contactForm.reset();
+    const setContactStatus = (message, isError = false) => {
+      if (!contactStatus) return;
+      contactStatus.textContent = message;
+      contactStatus.classList.toggle("text-danger", isError);
+      contactStatus.classList.toggle("text-success", !isError);
+    };
 
-        // Show Toast Success
-        if (toast) {
-          toast.classList.add("show");
-          setTimeout(() => {
-            toast.classList.remove("show");
-          }, 4500);
+    const createRequestId = () => {
+      const bytes = new Uint8Array(16);
+      if (window.crypto && window.crypto.getRandomValues) {
+        window.crypto.getRandomValues(bytes);
+      } else {
+        for (let i = 0; i < bytes.length; i++) {
+          bytes[i] = Math.floor(Math.random() * 256);
         }
-      }, 1500);
+      }
+
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+      return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+    };
+
+    window.addEventListener("message", (event) => {
+      const response = event.data;
+      if (
+        !response ||
+        response.source !== "portfolio-contact" ||
+        response.requestId !== activeRequestId
+      ) {
+        return;
+      }
+
+      clearTimeout(submissionTimeout);
+      activeRequestId = null;
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalButtonText;
+      requestIdInput.value = "";
+
+      if (!response.success) {
+        setContactStatus("Your message could not be saved. Please try again later.", true);
+        return;
+      }
+
+      contactForm.reset();
+      setContactStatus("Thanks! Your message has been saved.", false);
+
+      if (toast) {
+        toast.querySelector("span").textContent = "Message saved successfully!";
+        toast.classList.add("show");
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => toast.classList.remove("show"), 4500);
+      }
+    });
+
+    contactForm.addEventListener("submit", (event) => {
+      const endpoint = contactForm.dataset.endpoint.trim();
+      let endpointUrl;
+
+      try {
+        endpointUrl = new URL(endpoint);
+      } catch {
+        event.preventDefault();
+        setContactStatus("The contact form is not configured yet. Please try again later.", true);
+        return;
+      }
+
+      if (
+        endpointUrl.protocol !== "https:" ||
+        endpointUrl.hostname !== "script.google.com" ||
+        !/^\/macros\/s\/[^/]+\/exec$/.test(endpointUrl.pathname)
+      ) {
+        event.preventDefault();
+        setContactStatus("The contact form endpoint is invalid. Please try again later.", true);
+        return;
+      }
+
+      activeRequestId = createRequestId();
+      requestIdInput.value = activeRequestId;
+      contactForm.action = endpointUrl.href;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = "<span>Sending...</span>";
+      setContactStatus("Sending your message...", false);
+
+      submissionTimeout = setTimeout(() => {
+        activeRequestId = null;
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalButtonText;
+        requestIdInput.value = "";
+        setContactStatus(
+          "We could not confirm whether your message was saved. Please wait before trying again.",
+          true
+        );
+      }, 20000);
     });
   }
 

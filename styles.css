@@ -428,6 +428,16 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-gray);
 }
 
+.contact-honeypot,
+.contact-submit-frame {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .form-floating > .form-control:focus ~ label,
 .form-floating > .form-control:not(:placeholder-shown) ~ label {
   color: var(--primary-light);
